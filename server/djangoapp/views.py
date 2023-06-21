@@ -80,13 +80,15 @@ def signup_request(request):
 # Update the `get_dealerships` view to render the index page with a list of dealerships
 def get_dealerships(request):
     if request.method == "GET":
+        context = {}
         url = "https://us-south.functions.appdomain.cloud/api/v1/web/7ae1641c-2e45-4777-8638-cee7629cdbee/dealership-package/get-dealership/api/dealership"
         # Get dealers from the URL
         dealerships = get_dealers_from_cf(url)
         # Concat all dealer's short name
         dealer_names = ' '.join([dealer.short_name for dealer in dealerships if dealer.short_name is not None])
+        context['dealerships'] = dealerships
         # Return a list of dealer short names
-        return HttpResponse(dealer_names)
+        return render(request, 'djangoapp/index.html', context)
 
 def get_dealer_details(request, dealer_id):
     if request.method == "GET":
@@ -108,35 +110,39 @@ def add_review(request, dealer_id):
     dealer_url = "https://us-south.functions.appdomain.cloud/api/v1/web/7ae1641c-2e45-4777-8638-cee7629cdbee/dealership-package/get-dealership"
     dealer = get_dealer_by_id_from_cf(dealer_url, id=dealer_id)
     context["dealer"] = dealer
+
     if request.method == 'GET':
         # Get cars for the dealer
-        cars = CarModel.objects.all()
+        cars = CarModel.objects.filter(dealer_id=dealer_id)
         print(cars)
         context["cars"] = cars
-        
         return render(request, 'djangoapp/add_review.html', context)
+
     elif request.method == 'POST':
         if request.user.is_authenticated:
             username = request.user.username
-            print(request.POST)
-            payload = dict()
             car_id = request.POST["car"]
             car = CarModel.objects.get(pk=car_id)
+
+            payload = dict()
             payload["time"] = datetime.utcnow().isoformat()
             payload["name"] = username
-            payload["dealership"] = id
-            payload["id"] = id
+            payload["dealership"] = dealer_id
+            payload["id"] = dealer_id
             payload["review"] = request.POST["content"]
             payload["purchase"] = False
-            if "purchasecheck" in request.POST:
-                if request.POST["purchasecheck"] == 'on':
-                    payload["purchase"] = True
-            payload["purchase_date"] = request.POST["purchasedate"]           
+            if "purchasecheck" in request.POST and request.POST["purchasecheck"] == 'on':
+                payload["purchase"] = True
+            payload["purchase_date"] = request.POST["purchasedate"]
             payload["car_model"] = car.name
-            new_payload = {}
-            new_payload["review"] = payload
+            payload["car_year"] = car.year.year 
+            payload["car_make"] = str(car.car_make)
+            
+           
+
+            new_payload = {"review": payload}
             review_post_url = "https://us-south.functions.appdomain.cloud/api/v1/web/7ae1641c-2e45-4777-8638-cee7629cdbee/default/post_review"
 
-            post_request(review_post_url, new_payload, id=dealer_id)
-        return redirect("djangoapp:dealer_details", id=dealer_id)
+            post_request(review_post_url, new_payload, dealer_id=dealer_id)
+        return redirect("djangoapp:dealer_details", dealer_id=dealer_id)
 
